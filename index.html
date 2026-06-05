@@ -9,20 +9,37 @@
     >
     <meta property="og:title" content="Jeffrey Counts">
     <meta property="og:description" content="A new home on the web is launching soon.">
-    <meta property="og:image" content="assets/jeffrey-counts-landing.jpg">
+    <meta property="og:image" content="assets/jeffrey-counts-landing-desktop.jpg">
     <title>Jeffrey Counts</title>
-    <link rel="preload" href="assets/jeffrey-counts-landing.jpg" as="image">
+    <link
+      rel="preload"
+      href="assets/jeffrey-counts-landing-desktop.jpg"
+      as="image"
+      media="(min-width: 761px)"
+    >
+    <link
+      rel="preload"
+      href="assets/jeffrey-counts-landing-mobile.jpg"
+      as="image"
+      media="(max-width: 760px)"
+    >
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
     <main class="landing" aria-labelledby="page-title">
       <section class="hero">
         <div class="art-wrap">
-          <img
-            class="brand-art"
-            src="assets/jeffrey-counts-landing.jpg"
-            alt="Illustration of Jeffrey Counts driving a pontoon boat on a lake"
-          >
+          <picture>
+            <source
+              srcset="assets/jeffrey-counts-landing-mobile.jpg"
+              media="(max-width: 760px)"
+            >
+            <img
+              class="brand-art"
+              src="assets/jeffrey-counts-landing-desktop.jpg"
+              alt="Illustration of Jeffrey Counts driving a pontoon boat on a lake"
+            >
+          </picture>
         </div>
 
         <div class="intro">
