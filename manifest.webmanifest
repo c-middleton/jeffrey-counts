@@ -1,0 +1,17 @@
+{
+  "name": "Jeffrey Counts",
+  "short_name": "Jeffrey",
+  "description": "A fast mobile counter for personal observations.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f6f1e8",
+  "theme_color": "#123c55",
+  "icons": [
+    {
+      "src": "assets/jeffrey-counts-landing.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -2,55 +2,93 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta
       name="description"
-      content="The official landing page for Jeffrey Counts."
+      content="Jeffrey Counts boats on the lake."
     >
+    <meta name="theme-color" content="#123c55">
     <meta property="og:title" content="Jeffrey Counts">
-    <meta property="og:description" content="A new home on the web is launching soon.">
+    <meta property="og:description" content="Count boats before they drift away.">
     <meta property="og:image" content="assets/jeffrey-counts-landing-desktop.jpg">
     <title>Jeffrey Counts</title>
-    <link
-      rel="preload"
-      href="assets/jeffrey-counts-landing-desktop.jpg"
-      as="image"
-      media="(min-width: 761px)"
-    >
-    <link
-      rel="preload"
-      href="assets/jeffrey-counts-landing-mobile.jpg"
-      as="image"
-      media="(max-width: 760px)"
-    >
+    <link rel="manifest" href="manifest.webmanifest">
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <main class="landing" aria-labelledby="page-title">
-      <section class="hero">
-        <div class="art-wrap">
-          <picture>
-            <source
-              srcset="assets/jeffrey-counts-landing-mobile.jpg"
-              media="(max-width: 760px)"
-            >
-            <img
-              class="brand-art"
-              src="assets/jeffrey-counts-landing-desktop.jpg"
-              alt="Illustration of Jeffrey Counts driving a pontoon boat on a lake"
-            >
-          </picture>
-        </div>
+    <main class="app-shell">
+      <section class="home-screen active" id="home-screen" aria-labelledby="home-title">
+        <div class="hero">
+          <div class="art-wrap">
+            <picture>
+              <source
+                srcset="assets/jeffrey-counts-landing-mobile.jpg"
+                media="(max-width: 760px)"
+              >
+              <img
+                class="brand-art"
+                src="assets/jeffrey-counts-landing-desktop.jpg"
+                alt="Illustration of Jeffrey Counts driving a pontoon boat on a lake"
+              >
+            </picture>
+          </div>
 
-        <div class="intro">
-          <p class="eyebrow">Official domain</p>
-          <h1 id="page-title">Jeffrey Counts</h1>
-          <p class="lede">
-            A new home on the web is launching soon.
-          </p>
-          <p class="status">Launching soon</p>
+          <div class="intro">
+            <p class="eyebrow">Official domain</p>
+            <h1 id="home-title">Jeffrey Counts</h1>
+            <p class="lede">
+              A fast little counter for boats on the lake.
+            </p>
+            <button class="primary-button" type="button" data-action="count-boats">
+              Count Boats
+            </button>
+          </div>
         </div>
       </section>
+
+      <section class="counter-screen" id="counter-screen" aria-labelledby="counter-title">
+        <header class="counter-header">
+          <button class="icon-button" type="button" data-action="home" aria-label="Back">
+            <span aria-hidden="true">&lt;</span>
+          </button>
+          <div>
+            <p class="eyebrow">Jeffrey Counts</p>
+            <h1 id="counter-title">Count Boats</h1>
+          </div>
+        </header>
+
+        <form class="counter-panel" id="boat-form">
+          <label class="field-label" for="boat-count">Boats</label>
+          <div class="counter-row">
+            <button class="step-button" type="button" data-action="decrement" aria-label="Subtract one boat">-</button>
+            <input
+              id="boat-count"
+              name="boat-count"
+              type="number"
+              inputmode="numeric"
+              min="0"
+              step="1"
+              required
+            >
+            <button class="step-button" type="button" data-action="increment" aria-label="Add one boat">+</button>
+          </div>
+
+          <label class="field-label" for="boat-note">Note</label>
+          <textarea id="boat-note" name="boat-note" rows="2" placeholder="Optional"></textarea>
+
+          <button class="primary-button full" type="submit">Save Boat Count</button>
+        </form>
+
+        <section class="history-section" aria-labelledby="history-title">
+          <div class="section-heading">
+            <h2 id="history-title">Recent Counts</h2>
+            <p class="muted" id="saved-total">0 saved</p>
+          </div>
+          <div class="history-list" id="history-list"></div>
+        </section>
+      </section>
     </main>
+
+    <script src="app.js" defer></script>
   </body>
 </html>
