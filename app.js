@@ -14,6 +14,7 @@ const categories = [
 let counts = loadCounts();
 let soundEnabled = loadSoundPreference();
 let audioContext;
+let audioUnlocked = false;
 
 const homeScreen = document.querySelector("#home-screen");
 const counterScreen = document.querySelector("#counter-screen");
@@ -22,6 +23,8 @@ const historyList = document.querySelector("#history-list");
 const savedTotal = document.querySelector("#saved-total");
 const soundToggle = document.querySelector("[data-action='toggle-sound']");
 
+document.addEventListener("pointerdown", unlockAudio, { passive: true });
+document.addEventListener("touchstart", unlockAudio, { passive: true });
 document.addEventListener("click", handleClick);
 
 renderCounter();
@@ -187,18 +190,50 @@ function renderSoundToggle() {
 function playFeedbackSound(type) {
   if (!soundEnabled) return;
 
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) return;
+  const context = getAudioContext();
+  if (!context) return;
 
-  audioContext ||= new AudioContext();
-
-  if (audioContext.state === "suspended") {
-    audioContext.resume();
+  if (context.state === "suspended") {
+    context.resume().then(() => playTone(type)).catch(() => {});
+    return;
   }
 
-  const now = audioContext.currentTime;
-  const oscillator = audioContext.createOscillator();
-  const gain = audioContext.createGain();
+  playTone(type);
+}
+
+function unlockAudio() {
+  if (!soundEnabled || audioUnlocked) return;
+
+  const context = getAudioContext();
+  if (!context) return;
+
+  if (context.state === "suspended") {
+    context.resume().catch(() => {});
+  }
+
+  const buffer = context.createBuffer(1, 1, 22050);
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  source.connect(context.destination);
+  source.start(0);
+  audioUnlocked = true;
+}
+
+function getAudioContext() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return null;
+
+  audioContext ||= new AudioContext();
+  return audioContext;
+}
+
+function playTone(type) {
+  const context = getAudioContext();
+  if (!context) return;
+
+  const now = context.currentTime;
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
   const isAdd = type === "add";
 
   oscillator.type = "sine";
@@ -210,7 +245,7 @@ function playFeedbackSound(type) {
   gain.gain.exponentialRampToValueAtTime(0.0001, now + (isAdd ? 0.11 : 0.16));
 
   oscillator.connect(gain);
-  gain.connect(audioContext.destination);
+  gain.connect(context.destination);
   oscillator.start(now);
   oscillator.stop(now + (isAdd ? 0.12 : 0.17));
 }
