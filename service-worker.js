@@ -1,11 +1,12 @@
-const CACHE_NAME = "jeffrey-counts-boats-v2";
+const CACHE_NAME = "jeffrey-counts-boats-v3";
 const APP_ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
   "./manifest.webmanifest",
-  "./assets/jeffrey-counts-landing.png",
+  "./assets/jeffrey-counts-landing-desktop.jpg",
+  "./assets/jeffrey-counts-landing-mobile.jpg",
 ];
 
 self.addEventListener("install", (event) => {

@@ -15,6 +15,7 @@ let counts = loadCounts();
 let soundEnabled = loadSoundPreference();
 let audioContext;
 let audioUnlocked = false;
+let audioUnlockPromise;
 
 const homeScreen = document.querySelector("#home-screen");
 const counterScreen = document.querySelector("#counter-screen");
@@ -25,6 +26,7 @@ const soundToggle = document.querySelector("[data-action='toggle-sound']");
 
 document.addEventListener("pointerdown", unlockAudio, { passive: true });
 document.addEventListener("touchstart", unlockAudio, { passive: true });
+document.addEventListener("touchend", unlockAudio, { passive: true });
 document.addEventListener("click", handleClick);
 
 renderCounter();
@@ -178,6 +180,10 @@ function toggleSound() {
   soundEnabled = !soundEnabled;
   localStorage.setItem(SOUND_STORAGE_KEY, String(soundEnabled));
   renderSoundToggle();
+
+  if (soundEnabled) {
+    unlockAudio().then(() => playTone("add")).catch(() => {});
+  }
 }
 
 function renderSoundToggle() {
@@ -193,8 +199,10 @@ function playFeedbackSound(type) {
   const context = getAudioContext();
   if (!context) return;
 
-  if (context.state === "suspended") {
-    context.resume().then(() => playTone(type)).catch(() => {});
+  if (context.state !== "running" || !audioUnlocked) {
+    unlockAudio().then(() => {
+      if (context.state === "running") playTone(type);
+    }).catch(() => {});
     return;
   }
 
@@ -202,21 +210,32 @@ function playFeedbackSound(type) {
 }
 
 function unlockAudio() {
-  if (!soundEnabled || audioUnlocked) return;
+  if (!soundEnabled) return Promise.resolve(false);
 
   const context = getAudioContext();
-  if (!context) return;
+  if (!context) return Promise.resolve(false);
+  if (audioUnlocked && context.state === "running") return Promise.resolve(true);
+  if (audioUnlockPromise) return audioUnlockPromise;
 
-  if (context.state === "suspended") {
-    context.resume().catch(() => {});
-  }
+  const resumeAudio = context.state === "running" ? Promise.resolve() : context.resume();
 
-  const buffer = context.createBuffer(1, 1, 22050);
-  const source = context.createBufferSource();
-  source.buffer = buffer;
-  source.connect(context.destination);
-  source.start(0);
-  audioUnlocked = true;
+  audioUnlockPromise = resumeAudio
+    .then(() => {
+      const buffer = context.createBuffer(1, 1, 22050);
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+      source.start(0);
+
+      audioUnlocked = context.state === "running";
+      return audioUnlocked;
+    })
+    .catch(() => false)
+    .finally(() => {
+      audioUnlockPromise = undefined;
+    });
+
+  return audioUnlockPromise;
 }
 
 function getAudioContext() {
