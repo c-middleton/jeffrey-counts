@@ -1,4 +1,4 @@
-const CACHE_NAME = "jeffrey-counts-boats-v1";
+const CACHE_NAME = "jeffrey-counts-boats-v2";
 const APP_ASSETS = [
   "./",
   "./index.html",

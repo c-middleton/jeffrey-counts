@@ -1,55 +1,78 @@
-const STORAGE_KEY = "jeffrey-counts:boats:v1";
+const STORAGE_KEY = "jeffrey-counts:boats:v2";
+const LEGACY_STORAGE_KEY = "jeffrey-counts:boats:v1";
+const SOUND_STORAGE_KEY = "jeffrey-counts:sound-enabled";
+
+const categories = [
+  "Powerboats",
+  "Pontoons",
+  "Fishing Boats",
+  "Sailboats",
+  "Canoes, Etc",
+  "Rafts",
+];
 
 let counts = loadCounts();
+let soundEnabled = loadSoundPreference();
+let audioContext;
 
 const homeScreen = document.querySelector("#home-screen");
 const counterScreen = document.querySelector("#counter-screen");
-const boatForm = document.querySelector("#boat-form");
-const boatCount = document.querySelector("#boat-count");
-const boatNote = document.querySelector("#boat-note");
+const categoryGrid = document.querySelector("#category-grid");
 const historyList = document.querySelector("#history-list");
 const savedTotal = document.querySelector("#saved-total");
+const soundToggle = document.querySelector("[data-action='toggle-sound']");
 
 document.addEventListener("click", handleClick);
-boatForm.addEventListener("submit", handleSave);
 
 renderCounter();
+renderSoundToggle();
 registerServiceWorker();
 
 function handleClick(event) {
-  const button = event.target.closest("[data-action]");
+  const button = event.target.closest("[data-action], [data-increment], [data-decrement]");
   if (!button) return;
+
+  if (button.dataset.increment) {
+    changeBoatCount(button.dataset.increment, 1);
+    return;
+  }
+
+  if (button.dataset.decrement) {
+    changeBoatCount(button.dataset.decrement, -1);
+    return;
+  }
 
   const action = button.dataset.action;
 
   if (action === "count-boats") showCounter();
   if (action === "home") showHome();
-  if (action === "increment") stepCount(1);
-  if (action === "decrement") stepCount(-1);
+  if (action === "toggle-sound") toggleSound();
 }
 
-function handleSave(event) {
-  event.preventDefault();
+function changeBoatCount(category, amount) {
+  if (amount > 0) {
+    counts.unshift({
+      id: crypto.randomUUID(),
+      category,
+      timestamp: new Date().toISOString(),
+    });
 
-  const value = Number(boatCount.value);
-  if (Number.isNaN(value)) return;
+    playFeedbackSound("add");
+  } else {
+    const index = counts.findIndex((count) => count.category === category);
+    if (index === -1) return;
+    counts.splice(index, 1);
 
-  counts.unshift({
-    id: crypto.randomUUID(),
-    value: Math.max(0, Math.round(value)),
-    note: boatNote.value.trim(),
-    timestamp: new Date().toISOString(),
-  });
+    playFeedbackSound("subtract");
+  }
 
   saveCounts();
-  boatNote.value = "";
   renderCounter();
 }
 
 function showCounter() {
   homeScreen.classList.remove("active");
   counterScreen.classList.add("active");
-  boatCount.focus();
 }
 
 function showHome() {
@@ -57,28 +80,43 @@ function showHome() {
   homeScreen.classList.add("active");
 }
 
-function stepCount(amount) {
-  const currentValue = Number(boatCount.value) || 0;
-  boatCount.value = Math.max(0, currentValue + amount);
-}
-
 function renderCounter() {
-  const latest = counts[0];
-  boatCount.value = latest ? latest.value : 0;
-  savedTotal.textContent = `${counts.length} saved`;
+  const totals = getTotals();
+  savedTotal.textContent = `${counts.length} total`;
+
+  categoryGrid.innerHTML = categories
+    .map((category) => {
+      const total = totals[category] || 0;
+
+      return `
+        <div class="category-control">
+          <button class="category-add" type="button" data-increment="${escapeHtml(category)}">
+            <span class="category-name">${escapeHtml(category)}</span>
+            <span class="category-count">${total}</span>
+            <span class="category-add-icon" aria-hidden="true">+</span>
+          </button>
+          <button
+            class="category-subtract"
+            type="button"
+            data-decrement="${escapeHtml(category)}"
+            aria-label="Subtract one ${escapeHtml(category)}"
+            ${total === 0 ? "disabled" : ""}
+          >-</button>
+        </div>
+      `;
+    })
+    .join("");
 
   historyList.innerHTML = counts.length
     ? counts
-        .slice(0, 10)
+        .slice(0, 12)
         .map((count) => {
-          const note = count.note ? `<p class="history-note">${escapeHtml(count.note)}</p>` : "";
-
           return `
             <article class="history-row">
-              <p class="history-value">${count.value}</p>
+              <p class="history-value">+1</p>
               <div>
+                <p class="history-category">${escapeHtml(count.category)}</p>
                 <p class="muted">${escapeHtml(formatDate(count.timestamp))}</p>
-                ${note}
               </div>
             </article>
           `;
@@ -87,13 +125,39 @@ function renderCounter() {
     : `<div class="empty-state"><p>No boat counts yet.</p></div>`;
 }
 
+function getTotals() {
+  return counts.reduce((totals, count) => {
+    totals[count.category] = (totals[count.category] || 0) + 1;
+    return totals;
+  }, {});
+}
+
 function loadCounts() {
   const stored = localStorage.getItem(STORAGE_KEY);
-  if (!stored) return [];
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed.filter((count) => count.category) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+  if (!legacy) return [];
 
   try {
-    const parsed = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed = JSON.parse(legacy);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.flatMap((count) => {
+      const value = Math.max(0, Math.round(Number(count.value) || 0));
+      return Array.from({ length: value }, () => ({
+        id: crypto.randomUUID(),
+        category: "Powerboats",
+        timestamp: count.timestamp || new Date().toISOString(),
+      }));
+    });
   } catch {
     return [];
   }
@@ -101,6 +165,54 @@ function loadCounts() {
 
 function saveCounts() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(counts));
+}
+
+function loadSoundPreference() {
+  return localStorage.getItem(SOUND_STORAGE_KEY) !== "false";
+}
+
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  localStorage.setItem(SOUND_STORAGE_KEY, String(soundEnabled));
+  renderSoundToggle();
+}
+
+function renderSoundToggle() {
+  if (!soundToggle) return;
+
+  soundToggle.textContent = soundEnabled ? "Sound On" : "Muted";
+  soundToggle.setAttribute("aria-pressed", String(soundEnabled));
+}
+
+function playFeedbackSound(type) {
+  if (!soundEnabled) return;
+
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+
+  audioContext ||= new AudioContext();
+
+  if (audioContext.state === "suspended") {
+    audioContext.resume();
+  }
+
+  const now = audioContext.currentTime;
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  const isAdd = type === "add";
+
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(isAdd ? 720 : 320, now);
+  oscillator.frequency.exponentialRampToValueAtTime(isAdd ? 980 : 220, now + 0.08);
+
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(isAdd ? 0.18 : 0.12, now + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + (isAdd ? 0.11 : 0.16));
+
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+  oscillator.start(now);
+  oscillator.stop(now + (isAdd ? 0.12 : 0.17));
 }
 
 function formatDate(timestamp) {
