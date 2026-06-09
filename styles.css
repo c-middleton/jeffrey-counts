@@ -302,6 +302,38 @@ textarea {
   }
 }
 
+@media (min-width: 761px) {
+  .hero {
+    width: min(100%, 560px);
+    grid-template-columns: 1fr;
+    align-content: center;
+    justify-items: center;
+    gap: 1.25rem;
+  }
+
+  .art-wrap {
+    width: fit-content;
+    max-width: 100%;
+  }
+
+  .brand-art {
+    width: auto;
+    max-width: min(100%, 430px);
+    max-height: calc(100vh - 8.5rem);
+  }
+
+  .intro {
+    width: min(100%, 430px);
+    max-width: none;
+    display: flex;
+    justify-content: center;
+  }
+
+  .intro .primary-button {
+    min-width: 14rem;
+  }
+}
+
 @media (max-width: 760px) {
   .home-screen {
     padding: 0;
