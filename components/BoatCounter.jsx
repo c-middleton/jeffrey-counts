@@ -541,7 +541,7 @@ function createMediaTone(type) {
     duration: isAdd ? 0.12 : 0.17,
     endFrequency: isAdd ? 980 : 220,
     startFrequency: isAdd ? 720 : 320,
-    volume: isAdd ? 0.28 : 0.22,
+    volume: isAdd ? 0.18 : 0.12,
   }));
 
   audio.preload = "auto";
@@ -571,10 +571,11 @@ function createToneDataUri({ duration, endFrequency, startFrequency, volume }) {
   view.setUint32(40, dataSize, true);
 
   for (let index = 0; index < sampleCount; index += 1) {
-    const progress = index / sampleCount;
-    const frequency = startFrequency + (endFrequency - startFrequency) * progress;
-    const envelope = Math.sin(Math.PI * progress);
-    const sample = Math.sin(2 * Math.PI * frequency * (index / sampleRate)) * envelope * volume;
+    const elapsed = index / sampleRate;
+    const rampProgress = Math.min(elapsed / 0.08, 1);
+    const frequency = startFrequency * ((endFrequency / startFrequency) ** rampProgress);
+    const envelope = getToneEnvelope(elapsed, duration);
+    const sample = Math.sin(2 * Math.PI * frequency * elapsed) * envelope * volume;
     view.setInt16(44 + index * 2, sample * 0x7fff, true);
   }
 
@@ -585,6 +586,19 @@ function createToneDataUri({ duration, endFrequency, startFrequency, volume }) {
   }
 
   return `data:audio/wav;base64,${btoa(binary)}`;
+}
+
+function getToneEnvelope(elapsed, duration) {
+  const attackDuration = 0.01;
+  const floor = 0.0001;
+
+  if (elapsed <= attackDuration) {
+    const progress = Math.max(elapsed / attackDuration, 0.001);
+    return floor * ((1 / floor) ** progress);
+  }
+
+  const decayProgress = Math.min((elapsed - attackDuration) / Math.max(duration - attackDuration, 0.001), 1);
+  return floor ** decayProgress;
 }
 
 function writeString(view, offset, value) {
