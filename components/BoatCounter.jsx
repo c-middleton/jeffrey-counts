@@ -5,7 +5,7 @@ import { createSupabaseBrowserClient } from "../lib/supabaseClient";
 
 const STORAGE_KEY = "jeffrey-counts:boats:v2";
 const LEGACY_STORAGE_KEY = "jeffrey-counts:boats:v1";
-const SOUND_STORAGE_KEY = "jeffrey-counts:sound-enabled";
+const SOUND_STORAGE_KEY = "jeffrey-counts:sound-enabled:v2";
 const MIGRATION_STORAGE_KEY = "jeffrey-counts:supabase-migrated";
 
 const categories = [
@@ -27,7 +27,7 @@ export default function BoatCounter() {
   const [syncState, setSyncState] = useState("Local");
   const [isSendingLink, setIsSendingLink] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundEnabled, setSoundEnabled] = useState(false);
   const supabaseRef = useRef(null);
   const audioRef = useRef({
     context: null,
@@ -77,24 +77,6 @@ export default function BoatCounter() {
 
     loadRemoteCounts(user);
   }, [authReady, user]);
-
-  useEffect(() => {
-    if (!soundEnabled) return undefined;
-
-    const unlock = () => {
-      unlockAudio(audioRef, soundEnabled);
-    };
-
-    document.addEventListener("pointerdown", unlock, { passive: true });
-    document.addEventListener("touchstart", unlock, { passive: true });
-    document.addEventListener("touchend", unlock, { passive: true });
-
-    return () => {
-      document.removeEventListener("pointerdown", unlock);
-      document.removeEventListener("touchstart", unlock);
-      document.removeEventListener("touchend", unlock);
-    };
-  }, [soundEnabled]);
 
   const totals = useMemo(() => {
     return counts.reduce((currentTotals, count) => {
@@ -265,18 +247,16 @@ export default function BoatCounter() {
   }
 
   function toggleSound() {
-    setSoundEnabled((currentSoundEnabled) => {
-      const nextSoundEnabled = !currentSoundEnabled;
-      localStorage.setItem(SOUND_STORAGE_KEY, String(nextSoundEnabled));
+    if (soundEnabled) {
+      localStorage.setItem(SOUND_STORAGE_KEY, "false");
+      setSoundEnabled(false);
+      audioRef.current.unlocked = false;
+      return;
+    }
 
-      if (nextSoundEnabled) {
-        unlockAudio(audioRef, nextSoundEnabled)
-          .then(() => playTone(audioRef, "add"))
-          .catch(() => {});
-      }
-
-      return nextSoundEnabled;
-    });
+    localStorage.setItem(SOUND_STORAGE_KEY, "true");
+    setSoundEnabled(true);
+    enableAudio(audioRef, "add");
   }
 
   return (
@@ -326,7 +306,7 @@ export default function BoatCounter() {
             onClick={toggleSound}
             aria-pressed={soundEnabled}
           >
-            {soundEnabled ? "Sound On" : "Muted"}
+            {soundEnabled ? "Sound On" : "Enable Sound"}
           </button>
         </header>
 
@@ -489,7 +469,7 @@ function saveCounts(counts) {
 }
 
 function loadSoundPreference() {
-  return localStorage.getItem(SOUND_STORAGE_KEY) !== "false";
+  return localStorage.getItem(SOUND_STORAGE_KEY) === "true";
 }
 
 function playFeedbackSound(audioRef, soundEnabled, type) {
@@ -499,26 +479,21 @@ function playFeedbackSound(audioRef, soundEnabled, type) {
   if (!context) return;
 
   if (context.state !== "running" || !audioRef.current.unlocked) {
-    unlockAudio(audioRef, soundEnabled)
-      .then(() => {
-        if (context.state === "running") playTone(audioRef, type);
-      })
-      .catch(() => {});
+    enableAudio(audioRef, type);
     return;
   }
 
   playTone(audioRef, type);
 }
 
-function unlockAudio(audioRef, soundEnabled) {
-  if (!soundEnabled) return Promise.resolve(false);
-
+function enableAudio(audioRef, type) {
   const context = getAudioContext(audioRef);
   if (!context) return Promise.resolve(false);
   if (audioRef.current.unlocked && context.state === "running") return Promise.resolve(true);
   if (audioRef.current.unlockPromise) return audioRef.current.unlockPromise;
 
   const resumeAudio = context.state === "running" ? Promise.resolve() : context.resume();
+  playTone(audioRef, type);
 
   audioRef.current.unlockPromise = resumeAudio
     .then(() => {
