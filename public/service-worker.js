@@ -1,20 +1,7 @@
-const CACHE_NAME = "jeffrey-counts-boats-v3";
-const APP_ASSETS = [
-  "./",
-  "./index.html",
-  "./styles.css",
-  "./app.js",
-  "./manifest.webmanifest",
-  "./assets/jeffrey-counts-landing-desktop.jpg",
-  "./assets/jeffrey-counts-landing-mobile.jpg",
-];
+const CACHE_NAME = "jeffrey-counts-next-v1";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(APP_ASSETS);
-    })
-  );
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener("activate", (event) => {
@@ -25,7 +12,7 @@ self.addEventListener("activate", (event) => {
           .filter((cacheName) => cacheName !== CACHE_NAME)
           .map((cacheName) => caches.delete(cacheName))
       );
-    })
+    }).then(() => self.clients.claim())
   );
 });
 

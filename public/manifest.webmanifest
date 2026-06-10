@@ -8,7 +8,7 @@
   "theme_color": "#123c55",
   "icons": [
     {
-      "src": "assets/jeffrey-counts-landing.png",
+      "src": "/assets/jeffrey-counts-landing.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
