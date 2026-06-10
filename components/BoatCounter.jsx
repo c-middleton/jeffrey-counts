@@ -5,7 +5,7 @@ import { createSupabaseBrowserClient } from "../lib/supabaseClient";
 
 const STORAGE_KEY = "jeffrey-counts:boats:v2";
 const LEGACY_STORAGE_KEY = "jeffrey-counts:boats:v1";
-const SOUND_STORAGE_KEY = "jeffrey-counts:sound-enabled:v2";
+const SOUND_STORAGE_KEY = "jeffrey-counts:sound-enabled:v3";
 const MIGRATION_STORAGE_KEY = "jeffrey-counts:supabase-migrated";
 
 const categories = [
@@ -31,6 +31,7 @@ export default function BoatCounter() {
   const supabaseRef = useRef(null);
   const audioRef = useRef({
     context: null,
+    media: {},
     unlocked: false,
     unlockPromise: null,
   });
@@ -476,27 +477,30 @@ function playFeedbackSound(audioRef, soundEnabled, type) {
   if (!soundEnabled) return;
 
   const context = getAudioContext(audioRef);
-  if (!context) return;
-
-  if (context.state !== "running" || !audioRef.current.unlocked) {
+  if (!context || context.state !== "running" || !audioRef.current.unlocked) {
     enableAudio(audioRef, type);
     return;
   }
 
-  playTone(audioRef, type);
+  playMediaTone(audioRef, type).catch(() => playTone(audioRef, type));
 }
 
 function enableAudio(audioRef, type) {
   const context = getAudioContext(audioRef);
-  if (!context) return Promise.resolve(false);
-  if (audioRef.current.unlocked && context.state === "running") return Promise.resolve(true);
+  if (!context) return playMediaTone(audioRef, type).catch(() => false);
+  if (audioRef.current.unlocked && context.state === "running") {
+    return playMediaTone(audioRef, type).catch(() => {
+      playTone(audioRef, type);
+      return false;
+    });
+  }
   if (audioRef.current.unlockPromise) return audioRef.current.unlockPromise;
 
   const resumeAudio = context.state === "running" ? Promise.resolve() : context.resume();
-  playTone(audioRef, type);
+  const mediaAudio = playMediaTone(audioRef, type).then(() => true).catch(() => false);
 
-  audioRef.current.unlockPromise = resumeAudio
-    .then(() => {
+  audioRef.current.unlockPromise = Promise.all([resumeAudio.catch(() => null), mediaAudio])
+    .then(([, mediaPlayed]) => {
       const buffer = context.createBuffer(1, 1, 22050);
       const source = context.createBufferSource();
       source.buffer = buffer;
@@ -504,6 +508,7 @@ function enableAudio(audioRef, type) {
       source.start(0);
 
       audioRef.current.unlocked = context.state === "running";
+      if (!mediaPlayed && audioRef.current.unlocked) playTone(audioRef, type);
       return audioRef.current.unlocked;
     })
     .catch(() => false)
@@ -512,6 +517,80 @@ function enableAudio(audioRef, type) {
     });
 
   return audioRef.current.unlockPromise;
+}
+
+function playMediaTone(audioRef, type) {
+  const tone = getMediaTone(audioRef, type);
+  if (!tone) return Promise.reject(new Error("Audio element unavailable"));
+
+  tone.pause();
+  tone.currentTime = 0;
+  return Promise.resolve(tone.play());
+}
+
+function getMediaTone(audioRef, type) {
+  if (typeof Audio === "undefined") return null;
+
+  audioRef.current.media[type] ||= createMediaTone(type);
+  return audioRef.current.media[type];
+}
+
+function createMediaTone(type) {
+  const isAdd = type === "add";
+  const audio = new Audio(createToneDataUri({
+    duration: isAdd ? 0.12 : 0.17,
+    endFrequency: isAdd ? 980 : 220,
+    startFrequency: isAdd ? 720 : 320,
+    volume: isAdd ? 0.28 : 0.22,
+  }));
+
+  audio.preload = "auto";
+  audio.playsInline = true;
+  return audio;
+}
+
+function createToneDataUri({ duration, endFrequency, startFrequency, volume }) {
+  const sampleRate = 44100;
+  const sampleCount = Math.floor(sampleRate * duration);
+  const dataSize = sampleCount * 2;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  writeString(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(view, 8, "WAVE");
+  writeString(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, "data");
+  view.setUint32(40, dataSize, true);
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    const progress = index / sampleCount;
+    const frequency = startFrequency + (endFrequency - startFrequency) * progress;
+    const envelope = Math.sin(Math.PI * progress);
+    const sample = Math.sin(2 * Math.PI * frequency * (index / sampleRate)) * envelope * volume;
+    view.setInt16(44 + index * 2, sample * 0x7fff, true);
+  }
+
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+
+  return `data:audio/wav;base64,${btoa(binary)}`;
+}
+
+function writeString(view, offset, value) {
+  for (let index = 0; index < value.length; index += 1) {
+    view.setUint8(offset + index, value.charCodeAt(index));
+  }
 }
 
 function getAudioContext(audioRef) {
