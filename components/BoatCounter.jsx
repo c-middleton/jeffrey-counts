@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createSupabaseBrowserClient } from "../lib/supabaseClient";
 
 const STORAGE_KEY = "jeffrey-counts:boats:v2";
 const LEGACY_STORAGE_KEY = "jeffrey-counts:boats:v1";
 const SOUND_STORAGE_KEY = "jeffrey-counts:sound-enabled";
+const MIGRATION_STORAGE_KEY = "jeffrey-counts:supabase-migrated";
 
 const categories = [
   "Powerboats",
@@ -18,7 +20,15 @@ const categories = [
 export default function BoatCounter() {
   const [screen, setScreen] = useState("home");
   const [counts, setCounts] = useState([]);
+  const [email, setEmail] = useState("");
+  const [user, setUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authMessage, setAuthMessage] = useState("");
+  const [syncState, setSyncState] = useState("Local");
+  const [isSendingLink, setIsSendingLink] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const supabaseRef = useRef(null);
   const audioRef = useRef({
     context: null,
     unlocked: false,
@@ -30,6 +40,43 @@ export default function BoatCounter() {
     setSoundEnabled(loadSoundPreference());
     registerServiceWorker();
   }, []);
+
+  useEffect(() => {
+    try {
+      const supabase = createSupabaseBrowserClient();
+      supabaseRef.current = supabase;
+
+      supabase.auth.getSession().then(({ data }) => {
+        setUser(data.session?.user ?? null);
+        setAuthReady(true);
+      });
+
+      const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+        setUser(session?.user ?? null);
+        setAuthReady(true);
+      });
+
+      return () => {
+        authListener.subscription.unsubscribe();
+      };
+    } catch {
+      setAuthReady(true);
+      setSyncState("Local");
+      return undefined;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!authReady) return;
+
+    if (!user) {
+      setCounts(loadCounts());
+      setSyncState("Local");
+      return;
+    }
+
+    loadRemoteCounts(user);
+  }, [authReady, user]);
 
   useEffect(() => {
     if (!soundEnabled) return undefined;
@@ -56,10 +103,56 @@ export default function BoatCounter() {
     }, {});
   }, [counts]);
 
-  function changeBoatCount(category, amount) {
+  async function loadRemoteCounts(currentUser) {
+    const supabase = supabaseRef.current;
+    if (!supabase) return;
+
+    setIsSyncing(true);
+    setSyncState("Syncing");
+
+    const { data, error } = await supabase
+      .from("count_events")
+      .select("id, category, observed_at")
+      .eq("user_id", currentUser.id)
+      .order("observed_at", { ascending: false });
+
+    if (error) {
+      setSyncState("Local");
+      setAuthMessage("Sync unavailable");
+      setIsSyncing(false);
+      return;
+    }
+
+    const remoteCounts = mapRemoteCounts(data);
+    const localCounts = loadCounts();
+    const migrationKey = `${MIGRATION_STORAGE_KEY}:${currentUser.id}`;
+    const shouldMigrateLocalCounts =
+      remoteCounts.length === 0 &&
+      localCounts.length > 0 &&
+      localStorage.getItem(migrationKey) !== "true";
+
+    if (shouldMigrateLocalCounts) {
+      const migratedCounts = await migrateLocalCounts(supabase, currentUser, localCounts);
+      if (migratedCounts) {
+        setCounts(migratedCounts);
+        saveCounts(migratedCounts);
+        localStorage.setItem(migrationKey, "true");
+        setSyncState("Saved");
+        setIsSyncing(false);
+        return;
+      }
+    }
+
+    setCounts(remoteCounts);
+    saveCounts(remoteCounts);
+    setSyncState("Saved");
+    setIsSyncing(false);
+  }
+
+  async function changeBoatCount(category, amount) {
     if (amount > 0) {
       const nextCount = {
-        id: crypto.randomUUID(),
+        id: `local-${crypto.randomUUID()}`,
         category,
         timestamp: new Date().toISOString(),
       };
@@ -70,19 +163,105 @@ export default function BoatCounter() {
         return nextCounts;
       });
       playFeedbackSound(audioRef, soundEnabled, "add");
+
+      if (user) {
+        await saveRemoteCount(nextCount);
+      }
+
+      return;
+    }
+
+    const index = counts.findIndex((count) => count.category === category);
+    if (index === -1) return;
+
+    const removedCount = counts[index];
+    const nextCounts = [...counts];
+    nextCounts.splice(index, 1);
+    setCounts(nextCounts);
+    saveCounts(nextCounts);
+    playFeedbackSound(audioRef, soundEnabled, "subtract");
+
+    if (user && !removedCount.id.startsWith("local-")) {
+      await deleteRemoteCount(removedCount, counts);
+    }
+  }
+
+  async function saveRemoteCount(localCount) {
+    const supabase = supabaseRef.current;
+    if (!supabase || !user) return;
+
+    setSyncState("Syncing");
+    const { data, error } = await supabase
+      .from("count_events")
+      .insert({
+        user_id: user.id,
+        category: localCount.category,
+        observed_at: localCount.timestamp,
+      })
+      .select("id, category, observed_at")
+      .single();
+
+    if (error) {
+      setSyncState("Local");
+      setAuthMessage("Count saved locally");
       return;
     }
 
     setCounts((currentCounts) => {
-      const index = currentCounts.findIndex((count) => count.category === category);
-      if (index === -1) return currentCounts;
-
-      const nextCounts = [...currentCounts];
-      nextCounts.splice(index, 1);
+      const nextCounts = currentCounts.map((count) => {
+        if (count.id !== localCount.id) return count;
+        return mapRemoteCount(data);
+      });
       saveCounts(nextCounts);
-      playFeedbackSound(audioRef, soundEnabled, "subtract");
       return nextCounts;
     });
+    setSyncState("Saved");
+  }
+
+  async function deleteRemoteCount(removedCount, previousCounts) {
+    const supabase = supabaseRef.current;
+    if (!supabase) return;
+
+    setSyncState("Syncing");
+    const { error } = await supabase.from("count_events").delete().eq("id", removedCount.id);
+
+    if (error) {
+      setCounts(previousCounts);
+      saveCounts(previousCounts);
+      setSyncState("Local");
+      setAuthMessage("Delete did not sync");
+      return;
+    }
+
+    setSyncState("Saved");
+  }
+
+  async function sendMagicLink(event) {
+    event.preventDefault();
+
+    const supabase = supabaseRef.current;
+    if (!supabase || !email.trim()) return;
+
+    setIsSendingLink(true);
+    setAuthMessage("");
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: {
+        emailRedirectTo: window.location.origin,
+      },
+    });
+
+    setIsSendingLink(false);
+    setAuthMessage(error ? "Sign-in failed" : "Email sent");
+  }
+
+  async function signOut() {
+    const supabase = supabaseRef.current;
+    if (!supabase) return;
+
+    await supabase.auth.signOut();
+    setAuthMessage("");
   }
 
   function toggleSound() {
@@ -152,6 +331,38 @@ export default function BoatCounter() {
         </header>
 
         <section className="counter-panel" aria-labelledby="category-title">
+          <div className="auth-panel">
+            {user ? (
+              <>
+                <div className="auth-user">
+                  <span className="sync-pill" data-state={syncState.toLowerCase()}>
+                    {isSyncing ? "Syncing" : syncState}
+                  </span>
+                  <p>{user.email}</p>
+                </div>
+                <button className="secondary-button" type="button" onClick={signOut}>
+                  Sign Out
+                </button>
+              </>
+            ) : (
+              <form className="auth-form" onSubmit={sendMagicLink}>
+                <input
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  placeholder="Email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  aria-label="Email"
+                />
+                <button className="secondary-button" type="submit" disabled={!authReady || isSendingLink}>
+                  {isSendingLink ? "Sending" : "Sign In"}
+                </button>
+              </form>
+            )}
+            {authMessage ? <p className="auth-message">{authMessage}</p> : null}
+          </div>
+
           <div className="section-heading compact">
             <h2 id="category-title">Tap a Boat</h2>
             <p className="muted">{counts.length} total</p>
@@ -211,6 +422,35 @@ export default function BoatCounter() {
       </section>
     </main>
   );
+}
+
+async function migrateLocalCounts(supabase, user, localCounts) {
+  const { data, error } = await supabase
+    .from("count_events")
+    .insert(
+      localCounts.map((count) => ({
+        user_id: user.id,
+        category: count.category,
+        observed_at: count.timestamp,
+      }))
+    )
+    .select("id, category, observed_at")
+    .order("observed_at", { ascending: false });
+
+  if (error) return null;
+  return mapRemoteCounts(data);
+}
+
+function mapRemoteCounts(counts) {
+  return counts.map(mapRemoteCount);
+}
+
+function mapRemoteCount(count) {
+  return {
+    id: count.id,
+    category: count.category,
+    timestamp: count.observed_at,
+  };
 }
 
 function loadCounts() {
