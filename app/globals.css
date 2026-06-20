@@ -180,6 +180,70 @@ h2 {
   font-size: 1.8rem;
 }
 
+.counter-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.header-actions {
+  display: grid;
+  grid-template-columns: minmax(0, auto) 3rem;
+  grid-template-rows: 3rem auto;
+  align-items: center;
+  justify-content: flex-end;
+  column-gap: 0.25rem;
+}
+
+.header-user {
+  display: contents;
+}
+
+.header-user p {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: end;
+  margin: 0;
+  max-width: 8.5rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signout-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0.8rem 0 0.15rem;
+}
+
+.signout-link {
+  min-height: 0.85rem;
+  border: 0;
+  padding: 0;
+  color: #a5b0ba;
+  font-size: 0.64rem;
+  font-weight: 750;
+  line-height: 1;
+  text-decoration: none;
+  background: transparent;
+}
+
+.signout-link:hover {
+  color: var(--brand);
+  text-decoration: underline;
+  text-underline-offset: 0.16rem;
+}
+
+.signout-link:focus-visible {
+  outline: 3px solid rgba(217, 160, 47, 0.55);
+  outline-offset: 3px;
+}
+
 .icon-button {
   display: grid;
   width: 3rem;
@@ -191,17 +255,28 @@ h2 {
 }
 
 .sound-toggle {
-  min-height: 3rem;
-  padding: 0 0.8rem;
-  color: var(--brand);
-  font-size: 0.82rem;
-  background: #e8f0ec;
+  width: 3rem;
+  height: 3rem;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  color: #ffffff;
+  background: var(--brand);
 }
 
 .sound-toggle[aria-pressed="false"] {
-  color: var(--muted);
-  background: rgba(255, 253, 248, 0.72);
-  border: 1px solid #c7d3d9;
+  background: #e8edf0;
+  border: 0;
+  opacity: 1;
+}
+
+.sound-icon {
+  display: block;
+  width: 1.75rem;
+  height: 1.75rem;
+  object-fit: contain;
 }
 
 .counter-panel,
@@ -224,15 +299,66 @@ h2 {
   gap: 0.45rem;
 }
 
+.auth-form {
+  display: grid;
+  gap: 0.65rem;
+}
+
 .auth-form,
 .auth-user {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.65rem;
   align-items: center;
 }
 
-.auth-form input {
+.auth-form:has(input) {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.auth-form:empty {
+  display: none;
+}
+
+.auth-form-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.auth-form-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.auth-close {
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 1.2rem;
+  line-height: 1;
+  background: transparent;
+}
+
+.auth-close:hover {
+  color: var(--brand);
+  background: #e8f0ec;
+}
+
+.auth-close:focus-visible {
+  outline: 3px solid rgba(217, 160, 47, 0.55);
+  outline-offset: 2px;
+}
+
+.auth-form input,
+.admin-form input {
   width: 100%;
   min-width: 0;
   min-height: 2.75rem;
@@ -244,6 +370,7 @@ h2 {
 }
 
 .auth-form input:focus-visible,
+.admin-form input:focus-visible,
 .secondary-button:focus-visible {
   outline: 3px solid rgba(217, 160, 47, 0.55);
   outline-offset: 3px;
@@ -289,6 +416,129 @@ h2 {
 .auth-message {
   color: var(--accent);
   font-weight: 800;
+}
+
+.auth-link {
+  width: fit-content;
+  min-height: 1.5rem;
+  border: 0;
+  padding: 0;
+  color: var(--brand);
+  font-size: 0.82rem;
+  font-weight: 850;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 0.2rem;
+  background: transparent;
+}
+
+.auth-link:hover {
+  color: var(--accent);
+}
+
+.auth-link:focus-visible {
+  outline: 3px solid rgba(217, 160, 47, 0.55);
+  outline-offset: 3px;
+}
+
+.admin-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: max(1rem, env(safe-area-inset-top)) 1rem max(2rem, env(safe-area-inset-bottom));
+}
+
+.admin-panel {
+  width: min(100%, 34rem);
+  display: grid;
+  gap: 1.1rem;
+  padding: 1.2rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.admin-panel h1 {
+  font-size: 2rem;
+}
+
+.admin-form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.admin-form label {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.password-control {
+  position: relative;
+  display: block;
+}
+
+.password-control input {
+  padding-right: 3.1rem;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.3rem;
+  width: 2.15rem;
+  height: 2.15rem;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+  transform: translateY(-50%);
+}
+
+.password-toggle:hover {
+  color: var(--brand);
+  background: #e8f0ec;
+}
+
+.password-toggle:focus-visible {
+  outline: 3px solid rgba(217, 160, 47, 0.55);
+  outline-offset: 2px;
+}
+
+.eye-icon {
+  position: relative;
+  width: 1.25rem;
+  height: 0.78rem;
+  border: 2px solid currentColor;
+  border-radius: 999px 999px 999px 999px / 760px 760px 760px 760px;
+}
+
+.eye-icon::before {
+  content: "";
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+
+.password-toggle[aria-pressed="true"] .eye-icon::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -0.3rem;
+  width: 2px;
+  height: 1.35rem;
+  border-radius: 999px;
+  background: currentColor;
+  transform: rotate(45deg);
 }
 
 .section-heading {
@@ -419,6 +669,31 @@ h2 {
 .history-list {
   display: grid;
   gap: 0.65rem;
+}
+
+.history-heading {
+  justify-content: flex-start;
+  gap: 0.65rem;
+}
+
+.history-toggle {
+  min-height: 2rem;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 0.65rem;
+  color: var(--brand);
+  font-size: 0.78rem;
+  font-weight: 850;
+  background: #e8f0ec;
+}
+
+.history-toggle:hover {
+  background: #dce8e2;
+}
+
+.history-toggle:focus-visible {
+  outline: 3px solid rgba(217, 160, 47, 0.55);
+  outline-offset: 3px;
 }
 
 .history-row {
@@ -564,6 +839,19 @@ h2 {
 @media (max-width: 420px) {
   .counter-header {
     gap: 0.55rem;
+  }
+
+  .counter-title-row {
+    align-items: start;
+    gap: 0.35rem;
+  }
+
+  .header-user {
+    flex-basis: auto;
+  }
+
+  .auth-form {
+    grid-template-columns: 1fr;
   }
 
   .sound-toggle {

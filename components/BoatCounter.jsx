@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "../lib/supabaseClient";
+import { userDisplayName, usernameToEmail, validateUsername } from "../lib/usernames";
 
 const STORAGE_KEY = "jeffrey-counts:boats:v2";
 const LEGACY_STORAGE_KEY = "jeffrey-counts:boats:v1";
@@ -20,15 +21,20 @@ const categories = [
 export default function BoatCounter() {
   const [screen, setScreen] = useState("home");
   const [counts, setCounts] = useState([]);
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [syncState, setSyncState] = useState("Local");
-  const [isSendingLink, setIsSendingLink] = useState(false);
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isSignInOpen, setIsSignInOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const supabaseRef = useRef(null);
+  const pendingHistoryScrollRef = useRef(null);
   const audioRef = useRef({
     context: null,
     media: {},
@@ -49,11 +55,13 @@ export default function BoatCounter() {
 
       supabase.auth.getSession().then(({ data }) => {
         setUser(data.session?.user ?? null);
+        setIsSignInOpen(false);
         setAuthReady(true);
       });
 
       const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
         setUser(session?.user ?? null);
+        if (session?.user) setIsSignInOpen(false);
         setAuthReady(true);
       });
 
@@ -78,6 +86,29 @@ export default function BoatCounter() {
 
     loadRemoteCounts(user);
   }, [authReady, user]);
+
+  useEffect(() => {
+    if (pendingHistoryScrollRef.current === null) return;
+
+    const previousScrollY = pendingHistoryScrollRef.current;
+    pendingHistoryScrollRef.current = null;
+    const frame = requestAnimationFrame(() => {
+      window.scrollTo(0, previousScrollY);
+      const timeout = setTimeout(() => {
+        window.scrollTo(0, previousScrollY);
+      }, 60);
+
+      pendingHistoryScrollRef.current = { timeout };
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (pendingHistoryScrollRef.current?.timeout) {
+        clearTimeout(pendingHistoryScrollRef.current.timeout);
+        pendingHistoryScrollRef.current = null;
+      }
+    };
+  }, [isHistoryOpen]);
 
   const totals = useMemo(() => {
     return counts.reduce((currentTotals, count) => {
@@ -219,24 +250,26 @@ export default function BoatCounter() {
     setSyncState("Saved");
   }
 
-  async function sendMagicLink(event) {
+  async function signIn(event) {
     event.preventDefault();
 
     const supabase = supabaseRef.current;
-    if (!supabase || !email.trim()) return;
+    const usernameError = validateUsername(username);
+    if (!supabase || usernameError || !password) {
+      setAuthMessage(usernameError || "Password is required");
+      return;
+    }
 
-    setIsSendingLink(true);
+    setIsSigningIn(true);
     setAuthMessage("");
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: {
-        emailRedirectTo: window.location.origin,
-      },
+    const { error } = await supabase.auth.signInWithPassword({
+      email: usernameToEmail(username),
+      password,
     });
 
-    setIsSendingLink(false);
-    setAuthMessage(error ? "Sign-in failed" : "Email sent");
+    setIsSigningIn(false);
+    setAuthMessage(error ? "Username or password did not work" : "");
   }
 
   async function signOut() {
@@ -258,6 +291,11 @@ export default function BoatCounter() {
     localStorage.setItem(SOUND_STORAGE_KEY, "true");
     setSoundEnabled(true);
     enableAudio(audioRef, "add");
+  }
+
+  function toggleHistory() {
+    pendingHistoryScrollRef.current = window.scrollY;
+    setIsHistoryOpen((isOpen) => !isOpen);
   }
 
   return (
@@ -299,50 +337,105 @@ export default function BoatCounter() {
           </button>
           <div>
             <p className="eyebrow">Jeffrey Counts</p>
-            <h1 id="counter-title">Count Boats</h1>
+            <div className="counter-title-row">
+              <h1 id="counter-title">Count Boats</h1>
+              {!user && !isSignInOpen ? (
+                <button
+                  className="auth-link"
+                  type="button"
+                  onClick={() => {
+                    setAuthMessage("");
+                    setIsSignInOpen(true);
+                  }}
+                >
+                  Sign in to save your count
+                </button>
+              ) : null}
+            </div>
           </div>
-          <button
-            className="sound-toggle"
-            type="button"
-            onClick={toggleSound}
-            aria-pressed={soundEnabled}
-          >
-            {soundEnabled ? "Sound On" : "Enable Sound"}
-          </button>
+          <div className="header-actions">
+            {user ? (
+              <div className="header-user">
+                <p>{userDisplayName(user)}</p>
+              </div>
+            ) : null}
+            <button
+              className="sound-toggle"
+              type="button"
+              onClick={toggleSound}
+              aria-pressed={soundEnabled}
+              aria-label={soundEnabled ? "Turn sound off" : "Turn sound on"}
+            >
+              <img
+                className="sound-icon"
+                src={soundEnabled ? "/assets/sound-on-icon.png" : "/assets/sound-off-icon.png"}
+                alt=""
+                aria-hidden="true"
+              />
+            </button>
+          </div>
         </header>
 
         <section className="counter-panel" aria-labelledby="category-title">
-          <div className="auth-panel">
-            {user ? (
-              <>
-                <div className="auth-user">
-                  <span className="sync-pill" data-state={syncState.toLowerCase()}>
-                    {isSyncing ? "Syncing" : syncState}
-                  </span>
-                  <p>{user.email}</p>
-                </div>
-                <button className="secondary-button" type="button" onClick={signOut}>
-                  Sign Out
-                </button>
-              </>
-            ) : (
-              <form className="auth-form" onSubmit={sendMagicLink}>
-                <input
-                  type="email"
-                  inputMode="email"
-                  autoComplete="email"
-                  placeholder="Email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  aria-label="Email"
-                />
-                <button className="secondary-button" type="submit" disabled={!authReady || isSendingLink}>
-                  {isSendingLink ? "Sending" : "Sign In"}
-                </button>
-              </form>
-            )}
-            {authMessage ? <p className="auth-message">{authMessage}</p> : null}
-          </div>
+          {!user || authMessage ? (
+            <div className="auth-panel">
+              {!user ? (
+                <form className="auth-form" onSubmit={signIn}>
+                  {isSignInOpen ? (
+                    <>
+                      <div className="auth-form-header">
+                        <p>Sign in to save your count</p>
+                        <button
+                          className="auth-close"
+                          type="button"
+                          onClick={() => {
+                            setAuthMessage("");
+                            setIsSignInOpen(false);
+                            setShowPassword(false);
+                          }}
+                          aria-label="Close sign in"
+                        >
+                          <span aria-hidden="true">x</span>
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        inputMode="text"
+                        autoComplete="username"
+                        placeholder="Username"
+                        value={username}
+                        onChange={(event) => setUsername(event.target.value)}
+                        aria-label="Username"
+                      />
+                      <span className="password-control">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          autoComplete="current-password"
+                          placeholder="Password"
+                          value={password}
+                          onChange={(event) => setPassword(event.target.value)}
+                          aria-label="Password"
+                        />
+                        <button
+                          className="password-toggle"
+                          type="button"
+                          onClick={() => setShowPassword((isShowing) => !isShowing)}
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                          aria-pressed={showPassword}
+                        >
+                          <span className="eye-icon" aria-hidden="true" />
+                        </button>
+                      </span>
+                      <button className="secondary-button" type="submit" disabled={!authReady || isSigningIn}>
+                        {isSigningIn ? "Signing In" : "Sign In"}
+                      </button>
+                    </>
+                  ) : null}
+                </form>
+              ) : null}
+              {authMessage ? <p className="auth-message">{authMessage}</p> : null}
+            </div>
+          ) : null}
 
           <div className="section-heading compact">
             <h2 id="category-title">Tap a Boat</h2>
@@ -378,27 +471,46 @@ export default function BoatCounter() {
           </div>
         </section>
 
+        {user ? (
+          <div className="signout-row">
+            <button className="signout-link" type="button" onClick={signOut}>
+              Sign Out
+            </button>
+          </div>
+        ) : null}
+
         <section className="history-section" aria-labelledby="history-title">
-          <div className="section-heading">
-            <h2 id="history-title">Recent Counts</h2>
+          <div className="section-heading history-heading">
+            <h2 id="history-title">Count History</h2>
+            <button
+              className="history-toggle"
+              type="button"
+              onClick={toggleHistory}
+              aria-expanded={isHistoryOpen}
+              aria-controls="history-list"
+            >
+              {isHistoryOpen ? "Hide" : "Show"}
+            </button>
           </div>
-          <div className="history-list">
-            {counts.length ? (
-              counts.slice(0, 12).map((count) => (
-                <article className="history-row" key={count.id}>
-                  <p className="history-value">+1</p>
-                  <div>
-                    <p className="history-category">{count.category}</p>
-                    <p className="muted">{formatDate(count.timestamp)}</p>
-                  </div>
-                </article>
-              ))
-            ) : (
-              <div className="empty-state">
-                <p>No boat counts yet.</p>
-              </div>
-            )}
-          </div>
+          {isHistoryOpen ? (
+            <div className="history-list" id="history-list">
+              {counts.length ? (
+                counts.slice(0, 12).map((count) => (
+                  <article className="history-row" key={count.id}>
+                    <p className="history-value">+1</p>
+                    <div>
+                      <p className="history-category">{count.category}</p>
+                      <p className="muted">{formatDate(count.timestamp)}</p>
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <p>No boat counts yet.</p>
+                </div>
+              )}
+            </div>
+          ) : null}
         </section>
       </section>
     </main>
