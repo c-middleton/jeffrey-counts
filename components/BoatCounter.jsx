@@ -191,7 +191,6 @@ export default function BoatCounter() {
       .order("saved_at", { ascending: false });
 
     if (error) {
-      setSaveMessage("Saved counts unavailable");
       return;
     }
 
@@ -681,6 +680,19 @@ export default function BoatCounter() {
                   {isSavingCount ? "Saving" : editingSavedCountId ? "Update & New" : "Save & New"}
                 </button>
               </form>
+              {!editingSavedCountId ? (
+                <button
+                  className="auth-link"
+                  type="button"
+                  onClick={() => {
+                    setSaveName("");
+                    setSaveMessage("");
+                    setIsSaveFormOpen(false);
+                  }}
+                >
+                  Close
+                </button>
+              ) : null}
             </>
           ) : (
             <button
@@ -710,14 +722,6 @@ export default function BoatCounter() {
           ) : null}
           {saveMessage ? <p className="auth-message">{saveMessage}</p> : null}
         </section>
-
-        {user ? (
-          <div className="signout-row">
-            <button className="signout-link" type="button" onClick={signOut}>
-              Sign Out
-            </button>
-          </div>
-        ) : null}
 
         <section className="history-section" aria-labelledby="history-title">
           <div className="section-heading history-heading">
@@ -809,6 +813,14 @@ export default function BoatCounter() {
             )}
           </div>
         </section>
+
+        {user ? (
+          <div className="signout-row">
+            <button className="signout-link" type="button" onClick={signOut}>
+              Sign Out
+            </button>
+          </div>
+        ) : null}
       </section>
     </main>
   );

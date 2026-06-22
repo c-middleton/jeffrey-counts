@@ -215,8 +215,8 @@ h2 {
 
 .signout-row {
   display: flex;
-  justify-content: flex-end;
-  margin: 0.8rem 0 0.15rem;
+  justify-content: center;
+  margin: 1.35rem 0 0.15rem;
 }
 
 .signout-link {
