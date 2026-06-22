@@ -5,6 +5,7 @@ import { createSupabaseBrowserClient } from "../lib/supabaseClient";
 import { userDisplayName, usernameToEmail, validateUsername } from "../lib/usernames";
 
 const STORAGE_KEY = "jeffrey-counts:boats:v2";
+const SAVED_COUNTS_STORAGE_KEY = "jeffrey-counts:saved-counts:v1";
 const LEGACY_STORAGE_KEY = "jeffrey-counts:boats:v1";
 const SOUND_STORAGE_KEY = "jeffrey-counts:sound-enabled:v3";
 const MIGRATION_STORAGE_KEY = "jeffrey-counts:supabase-migrated";
@@ -21,6 +22,10 @@ const categories = [
 export default function BoatCounter() {
   const [screen, setScreen] = useState("home");
   const [counts, setCounts] = useState([]);
+  const [savedCounts, setSavedCounts] = useState([]);
+  const [saveName, setSaveName] = useState("");
+  const [saveMessage, setSaveMessage] = useState("");
+  const [isSaveFormOpen, setIsSaveFormOpen] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [user, setUser] = useState(null);
@@ -31,7 +36,10 @@ export default function BoatCounter() {
   const [isSignInOpen, setIsSignInOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [expandedSavedCountId, setExpandedSavedCountId] = useState(null);
+  const [editingSavedCountId, setEditingSavedCountId] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSavingCount, setIsSavingCount] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const supabaseRef = useRef(null);
   const pendingHistoryScrollRef = useRef(null);
@@ -44,6 +52,7 @@ export default function BoatCounter() {
 
   useEffect(() => {
     setCounts(loadCounts());
+    setSavedCounts(loadSavedCounts());
     setSoundEnabled(loadSoundPreference());
     registerServiceWorker();
   }, []);
@@ -80,11 +89,14 @@ export default function BoatCounter() {
 
     if (!user) {
       setCounts(loadCounts());
+      setSavedCounts(loadSavedCounts());
+      setEditingSavedCountId(null);
       setSyncState("Local");
       return;
     }
 
     loadRemoteCounts(user);
+    loadRemoteSavedCounts(user);
   }, [authReady, user]);
 
   useEffect(() => {
@@ -116,6 +128,11 @@ export default function BoatCounter() {
       return currentTotals;
     }, {});
   }, [counts]);
+
+  const editingSavedCount = useMemo(() => {
+    if (!editingSavedCountId) return null;
+    return savedCounts.find((savedCount) => savedCount.id === editingSavedCountId) || null;
+  }, [editingSavedCountId, savedCounts]);
 
   async function loadRemoteCounts(currentUser) {
     const supabase = supabaseRef.current;
@@ -161,6 +178,26 @@ export default function BoatCounter() {
     saveCounts(remoteCounts);
     setSyncState("Saved");
     setIsSyncing(false);
+  }
+
+  async function loadRemoteSavedCounts(currentUser) {
+    const supabase = supabaseRef.current;
+    if (!supabase) return;
+
+    const { data, error } = await supabase
+      .from("count_sessions")
+      .select("id, name, total_count, category_totals, events, saved_at")
+      .eq("user_id", currentUser.id)
+      .order("saved_at", { ascending: false });
+
+    if (error) {
+      setSaveMessage("Saved counts unavailable");
+      return;
+    }
+
+    const remoteSavedCounts = data.map(mapRemoteSavedCount);
+    setSavedCounts(remoteSavedCounts);
+    saveSavedCounts(remoteSavedCounts);
   }
 
   async function changeBoatCount(category, amount) {
@@ -250,6 +287,133 @@ export default function BoatCounter() {
     setSyncState("Saved");
   }
 
+  async function saveCurrentCount(event) {
+    event.preventDefault();
+
+    const name = saveName.trim();
+    if (!name) {
+      setSaveMessage("Name this count before saving");
+      return;
+    }
+
+    if (!counts.length) {
+      setSaveMessage("Add at least one count before saving");
+      return;
+    }
+
+    const snapshot = buildSavedCountSnapshot(name, counts);
+    const isEditingSavedCount = Boolean(editingSavedCountId);
+    setIsSavingCount(true);
+    setSaveMessage("");
+
+    let savedSnapshot = snapshot;
+    let saveStatus = isEditingSavedCount ? `Updated ${name}` : `Saved ${name}`;
+    let canStartNewCount = true;
+
+    if (user) {
+      const remoteSnapshot = isEditingSavedCount
+        ? await updateRemoteSavedCount(editingSavedCountId, snapshot)
+        : await saveRemoteSavedCount(snapshot);
+      if (remoteSnapshot) {
+        savedSnapshot = remoteSnapshot;
+      } else {
+        savedSnapshot = { ...snapshot, id: editingSavedCountId || snapshot.id };
+        saveStatus = isEditingSavedCount ? `Updated ${name} locally` : `Saved ${name} locally`;
+      }
+
+      canStartNewCount = await clearRemoteCurrentCounts();
+      setIsSavingCount(false);
+
+      setSavedCounts((currentSavedCounts) => {
+        const nextSavedCounts = upsertSavedCount(currentSavedCounts, savedSnapshot, editingSavedCountId);
+        saveSavedCounts(nextSavedCounts);
+        return nextSavedCounts;
+      });
+    } else {
+      savedSnapshot = isEditingSavedCount ? { ...snapshot, id: editingSavedCountId } : snapshot;
+      setSavedCounts((currentSavedCounts) => {
+        const nextSavedCounts = upsertSavedCount(currentSavedCounts, savedSnapshot, editingSavedCountId);
+        saveSavedCounts(nextSavedCounts);
+        return nextSavedCounts;
+      });
+      setIsSavingCount(false);
+    }
+
+    if (!canStartNewCount) {
+      setSaveMessage("Saved, but could not start a new cloud count");
+      setExpandedSavedCountId(savedSnapshot.id);
+      return;
+    }
+
+    setCounts([]);
+    saveCounts([]);
+    setSaveName("");
+    setIsSaveFormOpen(false);
+    setEditingSavedCountId(null);
+    setSaveMessage(saveStatus);
+    setExpandedSavedCountId(savedSnapshot.id);
+  }
+
+  async function saveRemoteSavedCount(snapshot) {
+    const supabase = supabaseRef.current;
+    if (!supabase || !user) return null;
+
+    const { data, error } = await supabase
+      .from("count_sessions")
+      .insert({
+        user_id: user.id,
+        name: snapshot.name,
+        total_count: snapshot.totalCount,
+        category_totals: snapshot.categoryTotals,
+        events: snapshot.events,
+        saved_at: snapshot.savedAt,
+      })
+      .select("id, name, total_count, category_totals, events, saved_at")
+      .single();
+
+    if (error) {
+      return null;
+    }
+
+    return mapRemoteSavedCount(data);
+  }
+
+  async function updateRemoteSavedCount(savedCountId, snapshot) {
+    const supabase = supabaseRef.current;
+    if (!supabase || !user || !savedCountId) return null;
+
+    const { data, error } = await supabase
+      .from("count_sessions")
+      .update({
+        name: snapshot.name,
+        total_count: snapshot.totalCount,
+        category_totals: snapshot.categoryTotals,
+        events: snapshot.events,
+        saved_at: snapshot.savedAt,
+      })
+      .eq("id", savedCountId)
+      .select("id, name, total_count, category_totals, events, saved_at")
+      .single();
+
+    if (error) {
+      return null;
+    }
+
+    return mapRemoteSavedCount(data);
+  }
+
+  async function clearRemoteCurrentCounts() {
+    const supabase = supabaseRef.current;
+    if (!supabase || !user) return true;
+
+    const { error: deleteError } = await supabase
+      .from("count_events")
+      .delete()
+      .eq("user_id", user.id);
+
+    return !deleteError;
+  }
+
   async function signIn(event) {
     event.preventDefault();
 
@@ -298,6 +462,23 @@ export default function BoatCounter() {
     setIsHistoryOpen((isOpen) => !isOpen);
   }
 
+  function editSavedCount(savedCount) {
+    const editableCounts = savedCount.events.map((count) => ({
+      id: `local-edit-${crypto.randomUUID()}`,
+      category: count.category,
+      timestamp: count.timestamp || new Date().toISOString(),
+    }));
+
+    setCounts(editableCounts);
+    saveCounts(editableCounts);
+    setSaveName(savedCount.name);
+    setSaveMessage(`Editing ${savedCount.name}`);
+    setIsSaveFormOpen(true);
+    setEditingSavedCountId(savedCount.id);
+    setExpandedSavedCountId(savedCount.id);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   return (
     <main className="app-shell">
       <section
@@ -333,7 +514,7 @@ export default function BoatCounter() {
       >
         <header className="counter-header">
           <button className="icon-button" type="button" onClick={() => setScreen("home")} aria-label="Back">
-            <span aria-hidden="true">&lt;</span>
+            <span aria-hidden="true">←</span>
           </button>
           <div>
             <p className="eyebrow">Jeffrey Counts</p>
@@ -375,6 +556,12 @@ export default function BoatCounter() {
             </button>
           </div>
         </header>
+
+        {editingSavedCount ? (
+          <div className="editing-banner">
+            <p>Editing {editingSavedCount.name}</p>
+          </div>
+        ) : null}
 
         <section className="counter-panel" aria-labelledby="category-title">
           {!user || authMessage ? (
@@ -471,6 +658,59 @@ export default function BoatCounter() {
           </div>
         </section>
 
+        <section
+          className={`save-panel ${isSaveFormOpen || editingSavedCountId ? "counter-panel" : "save-panel-collapsed"}`}
+          aria-label={editingSavedCountId ? "Update count" : "Save count"}
+        >
+          {isSaveFormOpen || editingSavedCountId ? (
+            <>
+              <div className="section-heading compact">
+                <h2 id="save-title">{editingSavedCountId ? "Update Count" : "Save Count"}</h2>
+                <p className="muted">{counts.length} current</p>
+              </div>
+              <form className="save-form" onSubmit={saveCurrentCount}>
+                <input
+                  type="text"
+                  value={saveName}
+                  onChange={(event) => setSaveName(event.target.value)}
+                  placeholder="Count name"
+                  aria-label="Count name"
+                  maxLength={60}
+                />
+                <button className="secondary-button" type="submit" disabled={isSavingCount}>
+                  {isSavingCount ? "Saving" : editingSavedCountId ? "Update & New" : "Save & New"}
+                </button>
+              </form>
+            </>
+          ) : (
+            <button
+              className="primary-button full"
+              type="button"
+              onClick={() => {
+                setSaveMessage("");
+                setIsSaveFormOpen(true);
+              }}
+            >
+              Save Count
+            </button>
+          )}
+          {editingSavedCountId ? (
+            <button
+              className="auth-link"
+              type="button"
+              onClick={() => {
+                setEditingSavedCountId(null);
+                setSaveName("");
+                setSaveMessage("");
+                setIsSaveFormOpen(false);
+              }}
+            >
+              Cancel edit
+            </button>
+          ) : null}
+          {saveMessage ? <p className="auth-message">{saveMessage}</p> : null}
+        </section>
+
         {user ? (
           <div className="signout-row">
             <button className="signout-link" type="button" onClick={signOut}>
@@ -514,9 +754,101 @@ export default function BoatCounter() {
             </div>
           ) : null}
         </section>
+
+        <section className="history-section" aria-labelledby="saved-counts-title">
+          <div className="section-heading history-heading">
+            <h2 id="saved-counts-title">Saved Counts</h2>
+          </div>
+          <div className="saved-count-list">
+            {savedCounts.length ? (
+              savedCounts.map((savedCount) => {
+                const isExpanded = expandedSavedCountId === savedCount.id;
+
+                return (
+                  <article className="saved-count-row" key={savedCount.id}>
+                    <button
+                      className="saved-count-toggle"
+                      type="button"
+                      onClick={() => setExpandedSavedCountId(isExpanded ? null : savedCount.id)}
+                      aria-expanded={isExpanded}
+                    >
+                      <span>
+                        <strong>{savedCount.name}</strong>
+                        <span>{savedCount.totalCount} total</span>
+                      </span>
+                      <time dateTime={savedCount.savedAt}>{formatTimestamp(savedCount.savedAt)}</time>
+                    </button>
+                    {isExpanded ? (
+                      <div className="saved-count-detail">
+                        <div className="saved-total-grid">
+                          {categories.map((category) => (
+                            <p key={category}>
+                              <span>{category}</span>
+                              <strong>{savedCount.categoryTotals[category] || 0}</strong>
+                            </p>
+                          ))}
+                        </div>
+                        <div className="saved-count-actions">
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={() => editSavedCount(savedCount)}
+                          >
+                            Edit This Count
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })
+            ) : (
+              <div className="empty-state">
+                <p>No saved counts yet.</p>
+              </div>
+            )}
+          </div>
+        </section>
       </section>
     </main>
   );
+}
+
+function buildSavedCountSnapshot(name, counts) {
+  const events = counts.map((count) => ({
+    id: count.id || `local-${crypto.randomUUID()}`,
+    category: count.category,
+    timestamp: count.timestamp || new Date().toISOString(),
+  }));
+
+  return {
+    id: `saved-${crypto.randomUUID()}`,
+    name,
+    totalCount: events.length,
+    categoryTotals: getCategoryTotals(events),
+    events,
+    savedAt: new Date().toISOString(),
+  };
+}
+
+function upsertSavedCount(savedCounts, savedSnapshot, editingSavedCountId) {
+  if (!editingSavedCountId) return [savedSnapshot, ...savedCounts];
+
+  const nextSavedCounts = savedCounts.map((savedCount) => {
+    if (savedCount.id !== editingSavedCountId) return savedCount;
+    return savedSnapshot;
+  });
+
+  return nextSavedCounts.some((savedCount) => savedCount.id === savedSnapshot.id)
+    ? nextSavedCounts
+    : [savedSnapshot, ...nextSavedCounts];
+}
+
+function getCategoryTotals(counts) {
+  return counts.reduce((currentTotals, count) => {
+    currentTotals[count.category] = (currentTotals[count.category] || 0) + 1;
+    return currentTotals;
+  }, {});
 }
 
 async function migrateLocalCounts(supabase, user, localCounts) {
@@ -545,6 +877,17 @@ function mapRemoteCount(count) {
     id: count.id,
     category: count.category,
     timestamp: count.observed_at,
+  };
+}
+
+function mapRemoteSavedCount(count) {
+  return {
+    id: count.id,
+    name: count.name,
+    totalCount: count.total_count,
+    categoryTotals: count.category_totals || {},
+    events: Array.isArray(count.events) ? count.events : [],
+    savedAt: count.saved_at,
   };
 }
 
@@ -581,6 +924,36 @@ function loadCounts() {
 
 function saveCounts(counts) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(counts));
+}
+
+function loadSavedCounts() {
+  const stored = localStorage.getItem(SAVED_COUNTS_STORAGE_KEY);
+  if (!stored) return [];
+
+  try {
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed.map(normalizeSavedCount).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeSavedCount(count) {
+  if (!count || !count.name || !Array.isArray(count.events)) return null;
+
+  const events = count.events.filter((event) => event.category);
+  return {
+    id: count.id || `saved-${crypto.randomUUID()}`,
+    name: String(count.name),
+    totalCount: Number(count.totalCount) || events.length,
+    categoryTotals: count.categoryTotals || getCategoryTotals(events),
+    events,
+    savedAt: count.savedAt || new Date().toISOString(),
+  };
+}
+
+function saveSavedCounts(savedCounts) {
+  localStorage.setItem(SAVED_COUNTS_STORAGE_KEY, JSON.stringify(savedCounts));
 }
 
 function loadSoundPreference() {
