@@ -657,71 +657,73 @@ export default function BoatCounter() {
           </div>
         </section>
 
-        <section
-          className={`save-panel ${isSaveFormOpen || editingSavedCountId ? "counter-panel" : "save-panel-collapsed"}`}
-          aria-label={editingSavedCountId ? "Update count" : "Save count"}
-        >
-          {isSaveFormOpen || editingSavedCountId ? (
-            <>
-              <div className="section-heading compact">
-                <h2 id="save-title">{editingSavedCountId ? "Update Count" : "Save Count"}</h2>
-                <p className="muted">{counts.length} current</p>
-              </div>
-              <form className="save-form" onSubmit={saveCurrentCount}>
-                <input
-                  type="text"
-                  value={saveName}
-                  onChange={(event) => setSaveName(event.target.value)}
-                  placeholder="Count name"
-                  aria-label="Count name"
-                  maxLength={60}
-                />
-                <button className="secondary-button" type="submit" disabled={isSavingCount}>
-                  {isSavingCount ? "Saving" : editingSavedCountId ? "Update & New" : "Save & New"}
-                </button>
-              </form>
-              {!editingSavedCountId ? (
-                <button
-                  className="auth-link"
-                  type="button"
-                  onClick={() => {
-                    setSaveName("");
-                    setSaveMessage("");
-                    setIsSaveFormOpen(false);
-                  }}
-                >
-                  Close
-                </button>
-              ) : null}
-            </>
-          ) : (
-            <button
-              className="primary-button full"
-              type="button"
-              onClick={() => {
-                setSaveMessage("");
-                setIsSaveFormOpen(true);
-              }}
-            >
-              Save Count
-            </button>
-          )}
-          {editingSavedCountId ? (
-            <button
-              className="auth-link"
-              type="button"
-              onClick={() => {
-                setEditingSavedCountId(null);
-                setSaveName("");
-                setSaveMessage("");
-                setIsSaveFormOpen(false);
-              }}
-            >
-              Cancel edit
-            </button>
-          ) : null}
-          {saveMessage ? <p className="auth-message">{saveMessage}</p> : null}
-        </section>
+        {user ? (
+          <section
+            className={`save-panel ${isSaveFormOpen || editingSavedCountId ? "counter-panel" : "save-panel-collapsed"}`}
+            aria-label={editingSavedCountId ? "Update count" : "Save count"}
+          >
+            {isSaveFormOpen || editingSavedCountId ? (
+              <>
+                <div className="section-heading compact">
+                  <h2 id="save-title">{editingSavedCountId ? "Update Count" : "Save Count"}</h2>
+                  <p className="muted">{counts.length} current</p>
+                </div>
+                <form className="save-form" onSubmit={saveCurrentCount}>
+                  <input
+                    type="text"
+                    value={saveName}
+                    onChange={(event) => setSaveName(event.target.value)}
+                    placeholder="Count name"
+                    aria-label="Count name"
+                    maxLength={60}
+                  />
+                  <button className="secondary-button" type="submit" disabled={isSavingCount}>
+                    {isSavingCount ? "Saving" : editingSavedCountId ? "Update & New" : "Save & New"}
+                  </button>
+                </form>
+                {!editingSavedCountId ? (
+                  <button
+                    className="auth-link"
+                    type="button"
+                    onClick={() => {
+                      setSaveName("");
+                      setSaveMessage("");
+                      setIsSaveFormOpen(false);
+                    }}
+                  >
+                    Close
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <button
+                className="primary-button full"
+                type="button"
+                onClick={() => {
+                  setSaveMessage("");
+                  setIsSaveFormOpen(true);
+                }}
+              >
+                Save Count
+              </button>
+            )}
+            {editingSavedCountId ? (
+              <button
+                className="auth-link"
+                type="button"
+                onClick={() => {
+                  setEditingSavedCountId(null);
+                  setSaveName("");
+                  setSaveMessage("");
+                  setIsSaveFormOpen(false);
+                }}
+              >
+                Cancel edit
+              </button>
+            ) : null}
+            {saveMessage ? <p className="auth-message">{saveMessage}</p> : null}
+          </section>
+        ) : null}
 
         <section className="history-section" aria-labelledby="history-title">
           <div className="section-heading history-heading">
@@ -759,60 +761,62 @@ export default function BoatCounter() {
           ) : null}
         </section>
 
-        <section className="history-section" aria-labelledby="saved-counts-title">
-          <div className="section-heading history-heading">
-            <h2 id="saved-counts-title">Saved Counts</h2>
-          </div>
-          <div className="saved-count-list">
-            {savedCounts.length ? (
-              savedCounts.map((savedCount) => {
-                const isExpanded = expandedSavedCountId === savedCount.id;
+        {user ? (
+          <section className="history-section" aria-labelledby="saved-counts-title">
+            <div className="section-heading history-heading">
+              <h2 id="saved-counts-title">Saved Counts</h2>
+            </div>
+            <div className="saved-count-list">
+              {savedCounts.length ? (
+                savedCounts.map((savedCount) => {
+                  const isExpanded = expandedSavedCountId === savedCount.id;
 
-                return (
-                  <article className="saved-count-row" key={savedCount.id}>
-                    <button
-                      className="saved-count-toggle"
-                      type="button"
-                      onClick={() => setExpandedSavedCountId(isExpanded ? null : savedCount.id)}
-                      aria-expanded={isExpanded}
-                    >
-                      <span>
-                        <strong>{savedCount.name}</strong>
-                        <span>{savedCount.totalCount} total</span>
-                      </span>
-                      <time dateTime={savedCount.savedAt}>{formatTimestamp(savedCount.savedAt)}</time>
-                    </button>
-                    {isExpanded ? (
-                      <div className="saved-count-detail">
-                        <div className="saved-total-grid">
-                          {categories.map((category) => (
-                            <p key={category}>
-                              <span>{category}</span>
-                              <strong>{savedCount.categoryTotals[category] || 0}</strong>
-                            </p>
-                          ))}
+                  return (
+                    <article className="saved-count-row" key={savedCount.id}>
+                      <button
+                        className="saved-count-toggle"
+                        type="button"
+                        onClick={() => setExpandedSavedCountId(isExpanded ? null : savedCount.id)}
+                        aria-expanded={isExpanded}
+                      >
+                        <span>
+                          <strong>{savedCount.name}</strong>
+                          <span>{savedCount.totalCount} total</span>
+                        </span>
+                        <time dateTime={savedCount.savedAt}>{formatTimestamp(savedCount.savedAt)}</time>
+                      </button>
+                      {isExpanded ? (
+                        <div className="saved-count-detail">
+                          <div className="saved-total-grid">
+                            {categories.map((category) => (
+                              <p key={category}>
+                                <span>{category}</span>
+                                <strong>{savedCount.categoryTotals[category] || 0}</strong>
+                              </p>
+                            ))}
+                          </div>
+                          <div className="saved-count-actions">
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={() => editSavedCount(savedCount)}
+                            >
+                              Edit This Count
+                            </button>
+                          </div>
                         </div>
-                        <div className="saved-count-actions">
-                          <button
-                            className="secondary-button"
-                            type="button"
-                            onClick={() => editSavedCount(savedCount)}
-                          >
-                            Edit This Count
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </article>
-                );
-              })
-            ) : (
-              <div className="empty-state">
-                <p>No saved counts yet.</p>
-              </div>
-            )}
-          </div>
-        </section>
+                      ) : null}
+                    </article>
+                  );
+                })
+              ) : (
+                <div className="empty-state">
+                  <p>No saved counts yet.</p>
+                </div>
+              )}
+            </div>
+          </section>
+        ) : null}
 
         {user ? (
           <div className="signout-row">
