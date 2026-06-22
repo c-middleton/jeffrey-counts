@@ -500,7 +500,9 @@ export default function BoatCounter() {
                     <p className="history-value">+1</p>
                     <div>
                       <p className="history-category">{count.category}</p>
-                      <p className="muted">{formatDate(count.timestamp)}</p>
+                      <p className="muted">
+                        <time dateTime={count.timestamp}>{formatTimestamp(count.timestamp)}</time>
+                      </p>
                     </div>
                   </article>
                 ))
@@ -750,19 +752,16 @@ function playTone(audioRef, type) {
   oscillator.stop(now + (isAdd ? 0.12 : 0.17));
 }
 
-function formatDate(timestamp) {
+function formatTimestamp(timestamp) {
   const date = new Date(timestamp);
-  const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
+  if (Number.isNaN(date.getTime())) return "Unknown time";
 
-  if (date.toDateString() === today.toDateString()) return "Today";
-  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
-
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleString(undefined, {
     month: "short",
     day: "numeric",
-    year: date.getFullYear() === today.getFullYear() ? undefined : "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }
 
