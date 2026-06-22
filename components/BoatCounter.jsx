@@ -639,6 +639,7 @@ export default function BoatCounter() {
                     type="button"
                     onClick={() => changeBoatCount(category, 1)}
                   >
+                    <CategoryIcon category={category} />
                     <span className="category-name">{category}</span>
                     <span className="category-count">{total}</span>
                     <span className="category-add-icon" aria-hidden="true">+</span>
@@ -858,6 +859,84 @@ export default function BoatCounter() {
       </section>
     </main>
   );
+}
+
+function CategoryIcon({ category }) {
+  return (
+    <span className="category-type-icon" aria-hidden="true">
+      <svg viewBox="0 0 48 48" focusable="false">
+        {getCategoryIcon(category)}
+      </svg>
+    </span>
+  );
+}
+
+function getCategoryIcon(category) {
+  switch (category) {
+    case "Powerboats":
+      return (
+        <>
+          <path d="M7 29h27l7-8h-12l-5-6h-8l-3 6h-6z" />
+          <path d="M11 34c3 2 6 2 9 0 3 2 6 2 9 0 3 2 6 2 9 0" />
+          <path d="M18 21h10" />
+        </>
+      );
+    case "Pontoons":
+      return (
+        <>
+          <path d="M12 17h24v10h-24z" />
+          <path d="M9 32h11" />
+          <path d="M28 32h11" />
+          <path d="M15 27v5" />
+          <path d="M33 27v5" />
+          <path d="M17 17v-5h14v5" />
+        </>
+      );
+    case "Fishing Boats":
+      return (
+        <>
+          <path d="M8 29h28l-5 8h-17z" />
+          <path d="M14 29l5-8h10l5 8" />
+          <path d="M18 21v-7" />
+          <path d="M18 14c8-5 17-1 18 8" />
+          <path d="M36 22v5" />
+          <path d="M34 27h4" />
+        </>
+      );
+    case "Sailboats":
+      return (
+        <>
+          <path d="M24 8v24" />
+          <path d="M24 10l-11 20h11z" />
+          <path d="M26 15l9 15h-9z" />
+          <path d="M12 36h24l-4 5h-16z" />
+        </>
+      );
+    case "Canoes, Etc":
+      return (
+        <>
+          <path d="M6 27c7-8 29-8 36 0-7 8-29 8-36 0z" />
+          <path d="M13 27h22" />
+          <path d="M18 17l12 20" />
+          <path d="M15 15l6 5" />
+          <path d="M27 34l6 5" />
+        </>
+      );
+    case "Rafts":
+      return (
+        <>
+          <path d="M10 19h28" />
+          <path d="M10 25h28" />
+          <path d="M10 31h28" />
+          <path d="M14 16v18" />
+          <path d="M24 16v18" />
+          <path d="M34 16v18" />
+          <path d="M12 38c3 2 6 2 9 0 3 2 6 2 9 0 3 2 6 2 8 0" />
+        </>
+      );
+    default:
+      return <path d="M8 30h32l-5 7h-22z" />;
+  }
 }
 
 function CategoryBarChart({ id, title, totals, totalCount }) {
