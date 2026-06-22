@@ -36,6 +36,7 @@ export default function BoatCounter() {
   const [isSignInOpen, setIsSignInOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isChartOpen, setIsChartOpen] = useState(true);
   const [expandedSavedCountId, setExpandedSavedCountId] = useState(null);
   const [editingSavedCountId, setEditingSavedCountId] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -725,6 +726,30 @@ export default function BoatCounter() {
           </section>
         ) : null}
 
+        {counts.length ? (
+          <section className="history-section" aria-labelledby="chart-title">
+            <div className="section-heading history-heading">
+              <h2 id="chart-title">Current Breakdown</h2>
+              <button
+                className="history-toggle"
+                type="button"
+                onClick={() => setIsChartOpen((isOpen) => !isOpen)}
+                aria-expanded={isChartOpen}
+                aria-controls="current-chart"
+              >
+                {isChartOpen ? "Hide" : "Show"}
+              </button>
+            </div>
+            {isChartOpen ? (
+              <CategoryBarChart
+                id="current-chart"
+                totals={totals}
+                totalCount={counts.length}
+              />
+            ) : null}
+          </section>
+        ) : null}
+
         <section className="history-section" aria-labelledby="history-title">
           <div className="section-heading history-heading">
             <h2 id="history-title">Count History</h2>
@@ -787,16 +812,21 @@ export default function BoatCounter() {
                       </button>
                       {isExpanded ? (
                         <div className="saved-count-detail">
-                          <div className="saved-total-grid">
-                            {categories.map((category) => (
-                              <p key={category}>
-                                <span>{category}</span>
-                                <strong>{savedCount.categoryTotals[category] || 0}</strong>
-                              </p>
-                            ))}
-                          </div>
-                          <div className="saved-count-actions">
-                            <button
+                        <div className="saved-total-grid">
+                          {categories.map((category) => (
+                            <p key={category}>
+                              <span>{category}</span>
+                              <strong>{savedCount.categoryTotals[category] || 0}</strong>
+                            </p>
+                          ))}
+                        </div>
+                        <CategoryBarChart
+                          title="Saved Breakdown"
+                          totals={savedCount.categoryTotals}
+                          totalCount={savedCount.totalCount}
+                        />
+                        <div className="saved-count-actions">
+                          <button
                               className="secondary-button"
                               type="button"
                               onClick={() => editSavedCount(savedCount)}
@@ -827,6 +857,39 @@ export default function BoatCounter() {
         ) : null}
       </section>
     </main>
+  );
+}
+
+function CategoryBarChart({ id, title, totals, totalCount }) {
+  const maxTotal = Math.max(...categories.map((category) => totals[category] || 0), 1);
+
+  return (
+    <div className="category-chart" id={id} aria-label={title}>
+      {title ? (
+        <div className="category-chart-header">
+          <h3>{title}</h3>
+          <p>{totalCount} total</p>
+        </div>
+      ) : null}
+      <div className="category-chart-bars">
+        {categories.map((category) => {
+          const value = totals[category] || 0;
+          const width = `${Math.max((value / maxTotal) * 100, value ? 8 : 0)}%`;
+
+          return (
+            <div className="category-chart-row" key={category}>
+              <div className="category-chart-label">
+                <span>{category}</span>
+                <strong>{value}</strong>
+              </div>
+              <div className="category-chart-track" aria-hidden="true">
+                <span className="category-chart-bar" style={{ "--bar-width": width }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
